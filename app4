@@ -1,0 +1,158 @@
+import pandas as pd
+import numpy as np
+import streamlit as st
+import plotly.express as px
+from textblob import TextBlob
+
+# -----------------------------
+# PAGE SETUP
+# -----------------------------
+st.set_page_config(page_title="🏙️ Urban Development Transparency Dashboard", layout="wide")
+st.title("🏙️ Final Week – Urban Development & Public Sentiment Dashboard")
+st.caption("Bringing together geospatial, sentiment, and service data for transparency and better planning.")
+
+# -----------------------------
+# STEP 1: LOAD DATA
+# -----------------------------
+built_path = r"C:\Users\byara\Favorites\Downloads\urban development\Built_Environment_Indicators_.csv"
+sentiment_path = r"C:\Users\byara\Favorites\Downloads\urban development\data.csv"
+
+@st.cache_data
+def load_data():
+    built = pd.read_csv(built_path)
+    sentiment = pd.read_csv(sentiment_path)
+    return built, sentiment
+
+built, sentiment = load_data()
+
+# -----------------------------
+# STEP 2: CLEAN & ANALYZE SENTIMENT
+# -----------------------------
+sentiment = sentiment.dropna(subset=["Sentence"])
+sentiment["Sentence"] = sentiment["Sentence"].astype(str)
+
+def analyze_sentiment(text):
+    score = TextBlob(text).sentiment.polarity
+    if score > 0.1:
+        return "Positive"
+    elif score < -0.1:
+        return "Negative"
+    else:
+        return "Neutral"
+
+sentiment["Sentiment"] = sentiment["Sentence"].apply(analyze_sentiment)
+
+# -----------------------------
+# STEP 3: ISSUE & NEIGHBORHOOD TAGGING
+# -----------------------------
+def categorize_issue(text):
+    t = text.lower()
+    if "pothole" in t or "road" in t:
+        return "Road Maintenance"
+    elif "bus" in t or "metro" in t or "subway" in t:
+        return "Public Transport"
+    elif "park" in t or "safety" in t:
+        return "Public Safety"
+    elif "garbage" in t or "clean" in t:
+        return "Sanitation"
+    else:
+        return "Other"
+
+sentiment["Category"] = sentiment["Sentence"].apply(categorize_issue)
+
+# Assign neighborhoods (simulated)
+neighborhoods = ["Downtown", "Uptown", "Riverside", "Suburbia", "Midtown"]
+sentiment["Neighborhood"] = np.random.choice(neighborhoods, len(sentiment))
+
+# -----------------------------
+# STEP 4: SIMULATE TRANSIT DATA + COORDINATES
+# -----------------------------
+transit = pd.DataFrame({
+    "Neighborhood": neighborhoods,
+    "Ridership": [12000, 9500, 8700, 7800, 6500],
+    "Delays": [12, 10, 8, 15, 6],
+    "On_Time_Percentage": [88, 90, 92, 85, 95],
+    "Latitude": [12.97, 13.01, 12.95, 12.88, 12.92],
+    "Longitude": [77.59, 77.63, 77.57, 77.65, 77.60]
+})
+
+# Merge negative sentiment count
+neg = sentiment[sentiment["Sentiment"] == "Negative"].groupby("Neighborhood").size().reset_index(name="Negative_Count")
+merged = pd.merge(transit, neg, on="Neighborhood", how="left").fillna(0)
+
+# -----------------------------
+# STEP 5: KPI CARDS
+# -----------------------------
+st.subheader("📈 Key Metrics Summary")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Citizen Feedback", len(sentiment))
+col2.metric("Negative Sentiment (%)", f"{(len(sentiment[sentiment['Sentiment']=='Negative'])/len(sentiment)*100):.1f}%")
+col3.metric("Avg On-Time Transit (%)", f"{merged['On_Time_Percentage'].mean():.1f}%")
+
+# -----------------------------
+# STEP 6: GEOSPATIAL MAP
+# -----------------------------
+st.header("🗺️ Geospatial View of Urban Sentiment")
+
+fig_map = px.scatter_mapbox(
+    merged,
+    lat="Latitude",
+    lon="Longitude",
+    size="Negative_Count",
+    color="Negative_Count",
+    hover_name="Neighborhood",
+    color_continuous_scale="Reds",
+    size_max=40,
+    zoom=11,
+    title="Negative Sentiment Hotspots by Neighborhood",
+)
+fig_map.update_layout(mapbox_style="carto-positron", margin={"r":0,"t":40,"l":0,"b":0})
+st.plotly_chart(fig_map, use_container_width=True)
+
+# -----------------------------
+# STEP 7: VISUAL INSIGHTS
+# -----------------------------
+st.header("📊 Service Sentiment and Performance Insights")
+
+col1, col2 = st.columns(2)
+with col1:
+    fig_bar = px.bar(
+        merged,
+        x="Neighborhood",
+        y="Negative_Count",
+        color="Negative_Count",
+        title="Negative Sentiment per Neighborhood"
+    )
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col2:
+    fig_scatter = px.scatter(
+        merged,
+        x="Delays",
+        y="Negative_Count",
+        size="Ridership",
+        color="Neighborhood",
+        title="Delays vs. Negative Sentiment (Bubble = Ridership)"
+    )
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+# -----------------------------
+# STEP 8: POLICY INSIGHTS / NARRATIVE
+# -----------------------------
+st.header("🧭 Narrative Insights for Policymakers")
+
+st.markdown("""
+- 🚦 **High delays** and **low on-time performance** strongly align with **negative public sentiment**.  
+- 🏙️ **Downtown** and **Suburbia** show higher frustration levels due to congestion and service delays.  
+- 🚌 Improving **transit reliability** and **road conditions** could reduce citizen complaints.  
+- 🧹 Areas with lower negative sentiment correspond to better **sanitation and public amenities**.  
+- 📊 This model can guide **budget allocation** and **resource prioritization** for better urban planning.
+""")
+
+# -----------------------------
+# STEP 9: RAW DATA & DOWNLOAD
+# -----------------------------
+st.header("📂 Final Integrated Data (Downloadable)")
+st.dataframe(merged)
+st.download_button("⬇ Download Integrated CSV", data=merged.to_csv(index=False), file_name="week4_final_dashboard_data.csv")

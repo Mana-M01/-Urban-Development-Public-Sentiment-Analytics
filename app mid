@@ -1,0 +1,116 @@
+#Week 3
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+from textblob import TextBlob
+
+st.set_page_config(page_title="Urban Development – Mid Project", layout="wide")
+st.title("🌆 Urban Development | Service Requests & Sentiment Dashboard")
+
+# -----------------------------
+# Step 1: Load Datasets
+# -----------------------------
+built_path = r"C:\Users\byara\Favorites\Downloads\urban development\Built_Environment_Indicators_.csv"
+sentiment_path = r"C:\Users\byara\Favorites\Downloads\urban development\data.csv"
+
+@st.cache_data
+def load_data():
+    built = pd.read_csv(built_path)
+    sentiment = pd.read_csv(sentiment_path)
+    return built, sentiment
+
+built, sentiment = load_data()
+
+# -----------------------------
+# Step 2: Clean & Analyze Sentiment
+# -----------------------------
+sentiment = sentiment.dropna(subset=["Sentence"])
+sentiment["Sentence"] = sentiment["Sentence"].astype(str)
+
+def analyze_sentiment(text):
+    score = TextBlob(text).sentiment.polarity
+    if score > 0.1:
+        return "Positive"
+    elif score < -0.1:
+        return "Negative"
+    else:
+        return "Neutral"
+
+sentiment["Computed_Sentiment"] = sentiment["Sentence"].apply(analyze_sentiment)
+
+# Categorize issue
+def categorize_issue(text):
+    t = text.lower()
+    if "pothole" in t or "road" in t:
+        return "Road Maintenance"
+    elif "subway" in t or "bus" in t or "metro" in t:
+        return "Public Transport"
+    elif "park" in t or "safety" in t:
+        return "Public Safety"
+    elif "garbage" in t or "clean" in t:
+        return "Sanitation"
+    else:
+        return "Other"
+
+sentiment["Issue_Category"] = sentiment["Sentence"].apply(categorize_issue)
+
+# -----------------------------
+# Step 3: Combine with Built Environment
+# -----------------------------
+# (Assuming built data has 'Latitude' & 'Longitude' columns)
+if {'Latitude', 'Longitude'}.issubset(built.columns):
+    built['Latitude'] = pd.to_numeric(built['Latitude'], errors='coerce')
+    built['Longitude'] = pd.to_numeric(built['Longitude'], errors='coerce')
+    built = built.dropna(subset=['Latitude', 'Longitude'])
+
+# -----------------------------
+# Step 4: Dashboard Sections
+# -----------------------------
+st.sidebar.header("🔍 Filters")
+category = st.sidebar.selectbox("Select Issue Category", ["All"] + list(sentiment["Issue_Category"].unique()))
+if category != "All":
+    sentiment = sentiment[sentiment["Issue_Category"] == category]
+
+# Metrics
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Feedback", len(sentiment))
+col2.metric("Positive %", f"{(sentiment['Computed_Sentiment'].eq('Positive').mean()*100):.1f}%")
+col3.metric("Most Common Issue", sentiment['Issue_Category'].mode()[0])
+
+# -----------------------------
+# Step 5: Visualizations
+# -----------------------------
+st.header("📊 Sentiment Overview")
+sent_summary = sentiment.groupby("Computed_Sentiment").size().reset_index(name="Count")
+fig1 = px.pie(sent_summary, names="Computed_Sentiment", values="Count", title="Sentiment Distribution")
+st.plotly_chart(fig1, use_container_width=True)
+
+st.header("📈 Sentiment by Issue Category")
+issue_summary = sentiment.groupby(["Issue_Category", "Computed_Sentiment"]).size().reset_index(name="Count")
+fig2 = px.bar(issue_summary, x="Issue_Category", y="Count", color="Computed_Sentiment", barmode="group")
+st.plotly_chart(fig2, use_container_width=True)
+
+# -----------------------------
+# Step 6: Geospatial Map (Problem Areas)
+# -----------------------------
+st.header("🗺 Geospatial Problem Areas")
+if {'Latitude', 'Longitude'}.issubset(built.columns):
+    fig_map = px.scatter_mapbox(
+        built,
+        lat="Latitude",
+        lon="Longitude",
+        hover_name="census_id" if "census_id" in built.columns else None,
+        color_discrete_sequence=["red"],
+        zoom=10,
+        height=500
+    )
+    fig_map.update_layout(mapbox_style="open-street-map")
+    st.plotly_chart(fig_map, use_container_width=True)
+else:
+    st.warning("⚠ No Latitude/Longitude columns found in Built_Environment file.")
+
+# -----------------------------
+# Step 7: Data Tables
+# -----------------------------
+st.header("💬 Sample Citizen Feedback")
+st.dataframe(sentiment[["Sentence", "Computed_Sentiment", "Issue_Category"]].head(15))

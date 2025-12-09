@@ -1,0 +1,147 @@
+#Week 3
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+from textblob import TextBlob
+import numpy as np
+
+# -----------------------------
+# Streamlit Page Config
+# -----------------------------
+st.set_page_config(page_title="Urban Analytics – Week 3", layout="wide")
+st.title("🚊 Week 3 – Transit & Sentiment Performance Dashboard")
+
+# -----------------------------
+# STEP 1: Load Datasets
+# -----------------------------
+built_path = r"C:\Users\byara\Favorites\Downloads\urban development\Built_Environment_Indicators_.csv"
+sentiment_path = r"C:\Users\byara\Favorites\Downloads\urban development\data.csv"
+
+@st.cache_data
+def load_data():
+    built = pd.read_csv(built_path)
+    sentiment = pd.read_csv(sentiment_path)
+    return built, sentiment
+
+built, sentiment = load_data()
+
+# -----------------------------
+# STEP 2: Clean and Analyze Sentiment
+# -----------------------------
+sentiment = sentiment.dropna(subset=["Sentence"])
+sentiment["Sentence"] = sentiment["Sentence"].astype(str)
+
+def analyze_sentiment(text):
+    score = TextBlob(text).sentiment.polarity
+    if score > 0.1:
+        return "Positive"
+    elif score < -0.1:
+        return "Negative"
+    else:
+        return "Neutral"
+
+sentiment["Computed_Sentiment"] = sentiment["Sentence"].apply(analyze_sentiment)
+
+# -----------------------------
+# STEP 3: Categorize and Tag Neighborhoods
+# -----------------------------
+def categorize_issue(text):
+    t = text.lower()
+    if "pothole" in t or "road" in t:
+        return "Road Maintenance"
+    elif "bus" in t or "metro" in t or "subway" in t:
+        return "Public Transport"
+    elif "park" in t or "safety" in t:
+        return "Public Safety"
+    elif "garbage" in t or "clean" in t:
+        return "Sanitation"
+    else:
+        return "Other"
+
+sentiment["Issue_Category"] = sentiment["Sentence"].apply(categorize_issue)
+
+# Assign neighborhoods randomly (simulation)
+neighborhoods = ["Downtown", "Uptown", "Riverside", "Suburbia", "Midtown"]
+sentiment["Neighborhood"] = np.random.choice(neighborhoods, size=len(sentiment))
+
+# -----------------------------
+# STEP 4: Simulate Transit Data
+# -----------------------------
+transit = pd.DataFrame({
+    "Neighborhood": neighborhoods,
+    "Ridership": [12000, 9500, 8700, 7800, 6500],
+    "Delays": [12, 10, 8, 15, 6],
+    "On_Time_Percentage": [88, 90, 92, 85, 95]
+})
+
+# -----------------------------
+# STEP 5: Correlate Sentiment with Transit
+# -----------------------------
+neg_sentiment = (
+    sentiment[sentiment["Computed_Sentiment"] == "Negative"]
+    .groupby("Neighborhood")
+    .size()
+    .reset_index(name="Negative_Count")
+)
+
+merged = pd.merge(transit, neg_sentiment, on="Neighborhood", how="left").fillna(0)
+
+# -----------------------------
+# STEP 6: Dashboard Visuals
+# -----------------------------
+st.header("📍 Neighborhood Sentiment vs Transit Performance")
+
+col1, col2 = st.columns(2)
+with col1:
+    fig1 = px.bar(
+        merged,
+        x="Neighborhood",
+        y="Negative_Count",
+        color="Negative_Count",
+        title="Negative Sentiment per Neighborhood",
+        color_continuous_scale="Reds"
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+with col2:
+    fig2 = px.scatter(
+        merged,
+        x="Delays",
+        y="Negative_Count",
+        size="Ridership",
+        color="Neighborhood",
+        title="Delays vs Negative Sentiment (Bubble size = Ridership)"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+# -----------------------------
+# STEP 7: Transit Performance Insights
+# -----------------------------
+st.header("🚦 Transit Performance Overview")
+fig3 = px.bar(
+    merged,
+    x="Neighborhood",
+    y=["Ridership", "Delays", "On_Time_Percentage"],
+    barmode="group",
+    title="Transit Metrics Comparison"
+)
+st.plotly_chart(fig3, use_container_width=True)
+
+# -----------------------------
+# STEP 8: Key Influencer Simulation
+# -----------------------------
+st.header("🧠 Drivers of Negative Sentiment (Key Influencer Style)")
+correlation = merged[["Negative_Count", "Delays", "On_Time_Percentage", "Ridership"]].corr()
+st.write("### Correlation Matrix")
+st.dataframe(correlation)
+
+if correlation.loc["Negative_Count", "Delays"] > 0.4:
+    st.warning("⚠ Delays are strongly correlated with higher negative sentiment.")
+if correlation.loc["Negative_Count", "On_Time_Percentage"] < -0.4:
+    st.success("✅ Higher on-time performance is linked to lower negative sentiment.")
+
+# -----------------------------
+# STEP 9: Raw Integrated Data
+# -----------------------------
+st.header("📊 Raw Integrated Data")
+st.dataframe(merged)

@@ -1,0 +1,71 @@
+#Week 1
+#Step 1: Load and Clean data
+import pandas as pd
+
+# File paths
+built_env_path = r"C:\Users\byara\Favorites\Downloads\urban development\Built_Environment_Indicators_.csv"
+data_path = r"C:\Users\byara\Favorites\Downloads\urban development\data.csv"
+
+# Load both datasets
+built_env = pd.read_csv(built_env_path)
+data = pd.read_csv(data_path)
+
+print("✅ Built Environment Data Shape:", built_env.shape)
+print("✅ Urban Data Shape:", data.shape)
+
+# Preview first few rows
+print("\n--- Built Environment Columns ---")
+print(built_env.columns)
+
+print("\n--- Data Columns ---")
+print(data.columns)
+
+# Basic cleaning: drop duplicates and nulls
+built_env = built_env.drop_duplicates().dropna(how='all')
+data = data.drop_duplicates().dropna(how='all')
+
+# Normalize column names (remove spaces, make lowercase)
+built_env.columns = built_env.columns.str.strip().str.lower().str.replace(' ', '_')
+data.columns = data.columns.str.strip().str.lower().str.replace(' ', '_')
+
+# Save cleaned files
+built_env.to_csv("clean_built_environment.csv", index=False)
+data.to_csv("clean_data.csv", index=False)
+
+print("\n✅ Cleaned files saved as 'clean_built_environment.csv' and 'clean_data.csv'")
+
+#Step 2: Check Common Columns (for merging)
+# Save simplified versions for Power BI
+
+# Select top columns from built environment for visualization
+built_selected = built_env[[
+    '6_digit_tract_code',
+    'census_id',
+    '1.1:_proximity_to_schools_(raw_values)',
+    '1.2:_proximity_to_modernized_schools_(raw_values)',
+    '1.3:_proximity_to_playgrounds_(raw_values)',
+    'driver_5:_transportation_(raw_values)',
+    'driver_8:_outdoor_environment_(raw_values)'
+]]
+
+# Rename columns for easier handling in Power BI
+built_selected = built_selected.rename(columns={
+    '6_digit_tract_code': 'tract_code',
+    '1.1:_proximity_to_schools_(raw_values)': 'proximity_schools',
+    '1.2:_proximity_to_modernized_schools_(raw_values)': 'proximity_modern_schools',
+    '1.3:_proximity_to_playgrounds_(raw_values)': 'proximity_playgrounds',
+    'driver_5:_transportation_(raw_values)': 'transportation_index',
+    'driver_8:_outdoor_environment_(raw_values)': 'outdoor_environment_index'
+})
+
+# Clean sentiment dataset
+sentiment = data.copy()
+sentiment['sentiment'] = sentiment['sentiment'].str.capitalize()
+
+# Save clean outputs
+built_selected.to_csv("built_environment_cleaned_summary.csv", index=False)
+sentiment.to_csv("sentiment_cleaned.csv", index=False)
+
+print("\n✅ Step 4 Completed:")
+print("→ 'built_environment_cleaned_summary.csv' ready for Power BI mapping")
+print("→ 'sentiment_cleaned.csv' ready for sentiment trend analysis")

@@ -1,0 +1,171 @@
+import pandas as pd
+import numpy as np
+import streamlit as st
+import plotly.express as px
+from textblob import TextBlob
+
+# -----------------------------------------------------------
+# PAGE CONFIG
+# -----------------------------------------------------------
+st.set_page_config(page_title="🌍 Urban Development Final Dashboard", layout="wide")
+st.title("🏙️ Urban Development & Sentiment Geo-Dashboard")
+
+# -----------------------------------------------------------
+# STEP 1: Load Data
+# -----------------------------------------------------------
+built_path = r"C:\Users\byara\Favorites\Downloads\urban development\Built_Environment_Indicators_.csv"
+sentiment_path = r"C:\Users\byara\Favorites\Downloads\urban development\data.csv"
+
+@st.cache_data
+def load_data():
+    built = pd.read_csv(built_path)
+    sentiment = pd.read_csv(sentiment_path)
+    return built, sentiment
+
+built, sentiment = load_data()
+
+# -----------------------------------------------------------
+# STEP 2: Sentiment Analysis
+# -----------------------------------------------------------
+sentiment = sentiment.dropna(subset=["Sentence"])
+sentiment["Sentence"] = sentiment["Sentence"].astype(str)
+
+def analyze_sentiment(text):
+    score = TextBlob(text).sentiment.polarity
+    if score > 0.1:
+        return "Positive"
+    elif score < -0.1:
+        return "Negative"
+    else:
+        return "Neutral"
+
+sentiment["Sentiment"] = sentiment["Sentence"].apply(analyze_sentiment)
+
+# Assign simulated neighborhoods
+if "Neighborhood" not in sentiment.columns:
+    neighborhoods = ["Downtown", "Uptown", "Riverside", "Suburbia", "Midtown"]
+    sentiment["Neighborhood"] = np.random.choice(neighborhoods, size=len(sentiment))
+
+# -----------------------------------------------------------
+# STEP 3: Aggregate Sentiment by Neighborhood
+# -----------------------------------------------------------
+summary = sentiment.groupby(["Neighborhood", "Sentiment"]).size().unstack(fill_value=0)
+summary["Total"] = summary.sum(axis=1)
+summary["Neg_Perc"] = (summary["Negative"] / summary["Total"]) * 100
+summary = summary.reset_index()
+
+# -----------------------------------------------------------
+# STEP 4: Ensure Built Data Has Neighborhood
+# -----------------------------------------------------------
+built_cols = [c.lower().strip() for c in built.columns]
+if "neighborhood" not in built_cols:
+    st.warning("⚠️ No Neighborhood column found — assigning simulated neighborhoods.")
+    built["Neighborhood"] = np.random.choice(summary["Neighborhood"].unique(), size=len(built))
+
+# Merge both datasets
+merged = pd.merge(summary, built, on="Neighborhood", how="left")
+
+# -----------------------------------------------------------
+# STEP 5: Assign Coordinates for Geo Mapping
+# -----------------------------------------------------------
+# You can replace these with actual lat/lon if you have real shapefile data later.
+coords = {
+    "Downtown": (12.9716, 77.5946),
+    "Uptown": (12.985, 77.61),
+    "Riverside": (12.96, 77.58),
+    "Suburbia": (13.02, 77.65),
+    "Midtown": (12.995, 77.60)
+}
+
+merged["Latitude"] = merged["Neighborhood"].map(lambda x: coords.get(x, (12.97, 77.59))[0])
+merged["Longitude"] = merged["Neighborhood"].map(lambda x: coords.get(x, (12.97, 77.59))[1])
+
+# -----------------------------------------------------------
+# STEP 6: Visualization Dashboards
+# -----------------------------------------------------------
+st.header("📊 Sentiment Distribution")
+
+col1, col2 = st.columns(2)
+with col1:
+    fig1 = px.bar(
+        summary,
+        x="Neighborhood",
+        y=["Positive", "Negative", "Neutral"],
+        title="Sentiment Count by Neighborhood",
+        barmode="group"
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+with col2:
+    fig2 = px.bar(
+        summary,
+        x="Neighborhood",
+        y="Neg_Perc",
+        title="Negative Sentiment Percentage",
+        color="Neg_Perc",
+        color_continuous_scale="Reds"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+# -----------------------------------------------------------
+# STEP 7: 🌍 Geospatial Sentiment Map
+# -----------------------------------------------------------
+st.header("🌍 Geospatial Sentiment Visualization")
+
+# Pick one numeric column to represent infrastructure quality
+numeric_cols = built.select_dtypes(include=["float64", "int64"]).columns.tolist()
+size_col = numeric_cols[0] if numeric_cols else "Total"
+
+fig_map = px.scatter_mapbox(
+    merged,
+    lat="Latitude",
+    lon="Longitude",
+    color="Neg_Perc",
+    size=size_col,
+    hover_name="Neighborhood",
+    hover_data={"Neg_Perc": True, size_col: True},
+    color_continuous_scale=px.colors.cyclical.IceFire,
+    zoom=11,
+    height=600,
+    title="🗺️ Negative Sentiment Overlay by Neighborhood"
+)
+
+fig_map.update_layout(mapbox_style="carto-positron")
+st.plotly_chart(fig_map, use_container_width=True)
+
+# -----------------------------------------------------------
+# STEP 8: Correlation Analysis
+# -----------------------------------------------------------
+st.header("📈 Correlation Analysis with Built Environment")
+
+if numeric_cols:
+    correlation = merged[["Neg_Perc"] + numeric_cols].corr()
+    st.dataframe(correlation)
+
+    top_corr = correlation["Neg_Perc"].drop("Neg_Perc").abs().sort_values(ascending=False).head(3)
+    st.subheader("Top Correlations with Negative Sentiment:")
+    for col, val in top_corr.items():
+        if val > 0.4:
+            st.warning(f"🔴 {col} strongly correlates with negative sentiment ({val:.2f})")
+        elif val < -0.4:
+            st.success(f"🟢 {col} inversely correlates with negative sentiment ({val:.2f})")
+else:
+    st.info("No numeric columns found in built environment data.")
+
+# -----------------------------------------------------------
+# STEP 9: Summary for Policymakers
+# -----------------------------------------------------------
+st.header("📘 Summary Insights for Policymakers")
+
+st.markdown("""
+### Key Takeaways:
+- Neighborhoods with high **Negative Sentiment (%)** indicate service delivery or infrastructure gaps.
+- Overlaying built environment data helps identify **resource allocation inefficiencies**.
+- Geospatial visualization supports **evidence-based policy decisions** for urban improvement.
+""")
+
+# -----------------------------------------------------------
+# STEP 10: Raw Integrated Data
+# -----------------------------------------------------------
+st.header("🧾 Raw Data Preview")
+st.dataframe(merged)

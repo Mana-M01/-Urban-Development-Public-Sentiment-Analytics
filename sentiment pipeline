@@ -1,0 +1,78 @@
+#Week 2
+import pandas as pd
+from textblob import TextBlob
+
+# File path
+data_path = r"C:\Users\byara\Favorites\Downloads\urban development\data.csv"
+
+# Load dataset
+data = pd.read_csv(data_path)
+print("✅ Data loaded successfully!")
+print("Shape:", data.shape)
+print("Columns:", data.columns)
+
+# Preview
+print("\n--- Sample Data ---")
+print(data.head())
+
+# --------------------------
+# STEP 1: Basic Cleaning
+# --------------------------
+data = data.drop_duplicates().dropna(subset=['Sentence'])
+data['Sentence'] = data['Sentence'].astype(str).str.strip()
+
+# --------------------------
+# STEP 2: Sentiment Analysis
+# --------------------------
+def analyze_sentiment(text):
+    blob = TextBlob(text)
+    score = blob.sentiment.polarity
+    if score > 0.1:
+        return "Positive"
+    elif score < -0.1:
+        return "Negative"
+    else:
+        return "Neutral"
+
+data['computed_sentiment'] = data['Sentence'].apply(analyze_sentiment)
+print("\n✅ Sentiment analysis complete!")
+
+# --------------------------
+# STEP 3: Categorize Issues
+# --------------------------
+def categorize_issue(text):
+    text = text.lower()
+    if "pothole" in text or "road" in text:
+        return "Road Maintenance"
+    elif "subway" in text or "metro" in text or "bus" in text:
+        return "Public Transport"
+    elif "park" in text or "safety" in text:
+        return "Public Safety"
+    elif "garbage" in text or "clean" in text:
+        return "Sanitation"
+    else:
+        return "Other"
+
+data['issue_category'] = data['Sentence'].apply(categorize_issue)
+print("✅ Issues categorized!")
+
+# --------------------------
+# STEP 4: Summary Aggregation
+# --------------------------
+summary = (
+    data.groupby(['issue_category', 'computed_sentiment'])
+    .size()
+    .reset_index(name='count')
+)
+print("\n✅ Summary created!")
+
+# --------------------------
+# STEP 5: Save Outputs
+# --------------------------
+data.to_csv("sentiment_results_full.csv", index=False)
+summary.to_csv("sentiment_summary.csv", index=False)
+
+print("\n🎯 All tasks completed!")
+print("Files saved in current folder:")
+print("→ sentiment_results_full.csv  (detailed data)")
+print("→ sentiment_summary.csv       (summary for Power BI)")
